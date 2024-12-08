@@ -1,41 +1,47 @@
-from typing import List
 from fastapi import HTTPException
-
-from .repository import find_item_by_name, get_all_items, save_item
-
-from .model import Item
-from .schema import AllItemsRepsonse, CreateItemRequest, CreateItemResponse
-from sqlalchemy.orm import Session
+from uuid import uuid4  # Import UUID generator
+from .repositories.repository import ItemRepository
+from .models.model import Item
+from be_task_ca.item.interface.schema import CreateItemRequest, CreateItemResponse
 
 
-def create_item(item: CreateItemRequest, db: Session) -> CreateItemResponse:
-    search_result = find_item_by_name(item.name, db)
-    if search_result is not None:
-        raise HTTPException(
-            status_code=409, detail="An item with this name already exists"
+class ItemUseCase:
+    def __init__(self, repository: ItemRepository):
+        self.repository = repository
+
+    def create_item(self, item: CreateItemRequest) -> CreateItemResponse:
+        # Check if the item already exists by name
+        similar_item = self.repository.find_item_by_name(item.name)
+        if similar_item:
+            raise HTTPException(
+                status_code=400, detail="Item with this name already exists"
+            )
+
+        new_item = Item(
+            id=uuid4(),
+            name=item.name,
+            description=item.description,
+            price=item.price,
+            quantity=item.quantity,
+        )
+        self.repository.save_item(new_item)
+        return CreateItemResponse(
+            id=new_item.id,
+            name=new_item.name,
+            description=new_item.description,
+            price=new_item.price,
+            quantity=new_item.quantity,
         )
 
-    new_item = Item(
-        name=item.name,
-        description=item.description,
-        price=item.price,
-        quantity=item.quantity,
-    )
-
-    save_item(new_item, db)
-    return model_to_schema(new_item)
-
-
-def get_all(db: Session) -> List[CreateItemResponse]:
-    item_list = get_all_items(db)
-    return AllItemsRepsonse(items=list(map(model_to_schema, item_list)))
-
-
-def model_to_schema(item: Item) -> CreateItemResponse:
-    return CreateItemResponse(
-        id=item.id,
-        name=item.name,
-        description=item.description,
-        price=item.price,
-        quantity=item.quantity,
-    )
+    def get_all_items(self) -> list[CreateItemResponse]:
+        items = self.repository.get_all_items()
+        return [
+            CreateItemResponse(
+                id=item.id,
+                name=item.name,
+                description=item.description,
+                price=item.price,
+                quantity=item.quantity,
+            )
+            for item in items
+        ]
